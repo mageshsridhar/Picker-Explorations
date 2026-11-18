@@ -41,23 +41,24 @@ struct ScrollableSnapDial: View {
     let allValues: [Double]
     @Binding var selectedValue: Double
 
-    @State private var scrollPosition: Double?
+    /// Space between neighbouring ticks.
+    private let tickSpacing: CGFloat = 10
 
-    init(allValues: [Double], selectedValue: Binding<Double>) {
-        self.allValues = allValues
-        self._selectedValue = selectedValue
-        // Start already scrolled to the current value. Setting it in onAppear rendered one
-        // frame at the start of the ruler first, flashing the ticks near the value at the edge.
-        self._scrollPosition = State(initialValue: selectedValue.wrappedValue)
-    }
-
-    /// Near either end of the range, pad the row so the first/last tick can still reach the center arrow.
-    private var needsEdgePadding: Bool {
-        selectedValue < TempoViewModel.minValue + 2 || selectedValue > TempoViewModel.maxValue - 2
-    }
+    @State private var position = ScrollPosition(x: 0)
+    /// True while the user drags or the ruler is still settling; only then does scrolling
+    /// change the tempo, so positioning the ruler programmatically never does.
+    @State private var isScrolling = false
+    /// Latest scroll offset, measured from the first tick sitting under the arrow.
+    @State private var offset: CGFloat = 0
+    /// The ruler stays hidden until it's scrolled to the current tempo, so it never shows
+    /// a frame at the wrong place (which used to flash ticks at the edge).
+    @State private var isPositioned = false
 
     var body: some View {
         GeometryReader { geometry in
+            // Twelve ticks across the ruler.
+            let tickWidth = geometry.size.width / 12
+            let step = tickWidth + tickSpacing
             ZStack {
                 ArrowShape()
                     .fill(.brown.gradient)
@@ -69,29 +70,54 @@ struct ScrollableSnapDial: View {
                     .offset(y: -35)
                     .foregroundStyle(.brown.secondary)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 10) {
+                    // Not lazy: 281 small ticks are cheap, and exact geometry lets the ruler open at
+                    // the right offset (a lazy stack only estimates its width before layout).
+                    HStack(alignment: .top, spacing: tickSpacing) {
                         ForEach(allValues, id: \.self) { value in
                             TickLabel(value: value, selectedValue: selectedValue)
-                                .containerRelativeFrame(.horizontal, count: 12, spacing: 0)
-                                .id(value)
+                                .frame(width: tickWidth)
                         }
                     }
-                    .padding(.horizontal, needsEdgePadding ? (geometry.size.width / 2) - 15 : 0)
                     .scrollTargetLayout()
                 }
+                // Half the ruler less half a tick on each side, so every tick (the first and
+                // last included) snaps to the center under the arrow. These margins never
+                // change, so the content doesn't shift mid-scroll as the old edge padding did.
+                .contentMargins(.horizontal, (geometry.size.width - tickWidth) / 2, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
-                .scrollPosition(id: $scrollPosition, anchor: .top)
-                .onChange(of: scrollPosition) { _, newValue in
-                    if let newValue {
-                        withAnimation {
-                            selectedValue = newValue
-                        }
-                    }
+                .scrollPosition($position)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.x + geometry.contentInsets.leading
+                } action: { _, newOffset in
+                    offset = newOffset
+                    if isScrolling { updateValue(step: step) }
+                }
+                .onScrollPhaseChange { _, phase in
+                    isScrolling = phase != .idle
+                    // Catch the final snapped position once scrolling settles.
+                    if phase == .idle { updateValue(step: step) }
+                }
+                .opacity(isPositioned ? 1 : 0)
+                .onAppear {
+                    let index = allValues.firstIndex(of: selectedValue) ?? 0
+                    // Offsets count from the first tick centered under the arrow.
+                    position.scrollTo(x: CGFloat(index) * step)
+                    isPositioned = true
                 }
                 .padding(.top)
             }
         }
         .frame(maxWidth: 350)
+    }
+
+    /// Sets the tempo to the tick nearest the arrow.
+    private func updateValue(step: CGFloat) {
+        guard isPositioned, step > 0 else { return }
+        let index = min(max(Int((offset / step).rounded()), 0), allValues.count - 1)
+        let value = allValues[index]
+        if value != selectedValue {
+            withAnimation { selectedValue = value }
+        }
     }
 }
 
