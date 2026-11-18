@@ -43,6 +43,14 @@ struct ScrollableSnapDial: View {
 
     @State private var scrollPosition: Double?
 
+    init(allValues: [Double], selectedValue: Binding<Double>) {
+        self.allValues = allValues
+        self._selectedValue = selectedValue
+        // Start already scrolled to the current value. Setting it in onAppear rendered one
+        // frame at the start of the ruler first, flashing the ticks near the value at the edge.
+        self._scrollPosition = State(initialValue: selectedValue.wrappedValue)
+    }
+
     /// Near either end of the range, pad the row so the first/last tick can still reach the center arrow.
     private var needsEdgePadding: Bool {
         selectedValue < TempoViewModel.minValue + 2 || selectedValue > TempoViewModel.maxValue - 2
@@ -73,9 +81,6 @@ struct ScrollableSnapDial: View {
                 }
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $scrollPosition, anchor: .top)
-                .onAppear {
-                    scrollPosition = selectedValue
-                }
                 .onChange(of: scrollPosition) { _, newValue in
                     if let newValue {
                         withAnimation {
