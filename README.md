@@ -2,7 +2,7 @@
 Three takes on a tempo (bpm) picker, built from scratch in SwiftUI. Each one sets the same value, from 60 to 200 bpm in half steps, so you can switch between them and compare how each one feels.
 
 <div align="center">
-  <img src="docs/demo.webp" width="280" alt="Setting the tempo with the Minimal, Sleek and Modern pickers in turn" />
+  <img src="docs/demo.webp" width="300" alt="Setting the tempo with the Minimal, Sleek and Modern pickers in turn" />
 </div>
 
 ### Screenshots
